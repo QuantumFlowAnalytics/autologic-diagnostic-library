@@ -39,12 +39,10 @@ jobs:
 
       - name: Handle possible enclosing folder
         run: |
-          # Find index.html and copy its containing directory contents
           INDEX_PATH=$(find /tmp/extract -name "index.html" | head -1)
           if [ -n "$INDEX_PATH" ]; then
             SOURCE_DIR=$(dirname "$INDEX_PATH")
             echo "Found index.html in: $SOURCE_DIR"
-            echo "Copying contents from: $SOURCE_DIR"
             rm -rf /tmp/deploy
             cp -r "$SOURCE_DIR" /tmp/deploy
           else
@@ -59,16 +57,15 @@ jobs:
             echo "ERROR: generic.min.json not found"
             exit 1
           fi
-          # Try as object (count keys)
           COUNT=$(python3 -c "
-import json, sys
-with open('$JSON_FILE', 'r') as f:
-    data = json.load(f)
-if isinstance(data, dict):
+import json,sys
+with open(sys.argv[1],'r') as f:
+    data=json.load(f)
+if isinstance(data,dict):
     print(len(data))
 else:
     print(len(data))
-")
+" "$JSON_FILE")
           echo "JSON record count: $COUNT"
           if [ "$COUNT" != "9533" ]; then
             echo "ERROR: Expected 9533 records, got $COUNT"
@@ -78,15 +75,20 @@ else:
 
       - name: Verify required files exist
         run: |
-          REQUIRED_FILES="index.html app.js manifest.webmanifest icon.svg sw.js README_UK.txt data/generic.min.json"
-          for file in $REQUIRED_FILES; do
+          for file in index.html app.js manifest.webmanifest icon.svg sw.js README_UK.txt; do
             if [ -f "/tmp/deploy/$file" ]; then
-              echo "✓ $file exists"
+              echo "OK: $file"
             else
-              echo "✗ $file MISSING"
+              echo "MISSING: $file"
               exit 1
             fi
           done
+          if [ -f "/tmp/deploy/data/generic.min.json" ]; then
+            echo "OK: data/generic.min.json"
+          else
+            echo "MISSING: data/generic.min.json"
+            exit 1
+          fi
 
       - name: Set up Pages
         uses: actions/configure-pages@v5

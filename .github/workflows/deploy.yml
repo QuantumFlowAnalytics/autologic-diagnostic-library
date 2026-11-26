@@ -1,0 +1,101 @@
+name: Deploy AutoLogic PWA to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Inspect archive contents
+        run: |
+          echo "=== Archive contents ==="
+          unzip -l AutoLogic_PWA_MVP_0.4.0_OBDeX_9533_DTC.zip
+
+      - name: Extract ZIP to temporary directory
+        run: |
+          mkdir -p /tmp/extract
+          unzip AutoLogic_PWA_MVP_0.4.0_OBDeX_9533_DTC.zip -d /tmp/extract
+
+      - name: Handle possible enclosing folder
+        run: |
+          # Find index.html and copy its containing directory contents
+          INDEX_PATH=$(find /tmp/extract -name "index.html" | head -1)
+          if [ -n "$INDEX_PATH" ]; then
+            SOURCE_DIR=$(dirname "$INDEX_PATH")
+            echo "Found index.html in: $SOURCE_DIR"
+            echo "Copying contents from: $SOURCE_DIR"
+            rm -rf /tmp/deploy
+            cp -r "$SOURCE_DIR" /tmp/deploy
+          else
+            echo "ERROR: index.html not found in archive"
+            exit 1
+          fi
+
+      - name: Verify JSON parses and has 9533 records
+        run: |
+          JSON_FILE=$(find /tmp/deploy -name "generic.min.json" | head -1)
+          if [ -z "$JSON_FILE" ]; then
+            echo "ERROR: generic.min.json not found"
+            exit 1
+          fi
+          # Try as object (count keys)
+          COUNT=$(python3 -c "
+import json, sys
+with open('$JSON_FILE', 'r') as f:
+    data = json.load(f)
+if isinstance(data, dict):
+    print(len(data))
+else:
+    print(len(data))
+")
+          echo "JSON record count: $COUNT"
+          if [ "$COUNT" != "9533" ]; then
+            echo "ERROR: Expected 9533 records, got $COUNT"
+            exit 1
+          fi
+          echo "JSON validation passed: $COUNT records"
+
+      - name: Verify required files exist
+        run: |
+          REQUIRED_FILES="index.html app.js manifest.webmanifest icon.svg sw.js README_UK.txt data/generic.min.json"
+          for file in $REQUIRED_FILES; do
+            if [ -f "/tmp/deploy/$file" ]; then
+              echo "✓ $file exists"
+            else
+              echo "✗ $file MISSING"
+              exit 1
+            fi
+          done
+
+      - name: Set up Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/deploy
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
